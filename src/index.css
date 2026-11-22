@@ -1,0 +1,102 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+
+  body {
+    background-color: #090909;
+    color: #F1F0EB;
+    font-family: 'Space Grotesk', system-ui, -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    overflow-x: hidden;
+  }
+
+  [dir="rtl"] {
+    font-family: 'Cairo', 'IBM Plex Sans Arabic', system-ui, -apple-system, sans-serif;
+    font-synthesis: none;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    letter-spacing: normal !important;
+  }
+
+  [dir="rtl"] * {
+    letter-spacing: normal !important;
+  }
+
+  [dir="rtl"] .font-mono {
+    font-family: 'JetBrains Mono', 'Cairo', monospace;
+    letter-spacing: normal !important;
+  }
+}
+
+/* On mobile, disable pointer events on hero 3D canvas by default so native page scroll works anywhere on screen */
+@media (max-width: 767px) {
+  #hero:not(.is-3d-active) canvas {
+    pointer-events: none !important;
+  }
+  #hero.is-3d-active canvas {
+    pointer-events: auto !important;
+  }
+}
+
+/* Radial Countdown Progress Ring */
+@keyframes radialCountdown {
+  from {
+    stroke-dashoffset: 0;
+  }
+  to {
+    stroke-dashoffset: 50.26;
+  }
+}
+
+.animate-radial-countdown {
+  animation: radialCountdown 6s linear forwards;
+}
+
+/* Touch action for 3D canvases to allow vertical page scrolling */
+#hero canvas,
+#fitting-lab canvas {
+  touch-action: pan-y !important;
+}
+
+/* Custom Sleek Dark Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #090909;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #222222;
+  border-radius: 0px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #CEFF00;
+}
+
+/* Hide scrollbar for Chrome, Safari and Opera */
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
+/* Hide scrollbar for IE, Edge and Firefox */
+.scrollbar-none {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}
+
+/* Subtle Film Grain Texture Overlay */
+.film-grain {
+  background-image: radial-gradient(#ffffff 0.5px, transparent 0.5px);
+  background-size: 8px 8px;
+  opacity: 0.015;
+}
