@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { RealHoodieModel } from './3d/RealHoodieModel';
 import { HoodieFit, HoodieFinish } from './3d/HoodieSculpt';
 import { useCart } from '../context/CartContext';
-import { getOptimizedDpr } from '../utils/performance';
+import { getOptimizedDpr, getPoseInferenceIntervalMs, isLowEndHardware, isAndroidDevice } from '../utils/performance';
 import { AIPoseTracker } from '../utils/aiPoseTracker';
 import {
   X,
@@ -87,13 +87,14 @@ export const ARViewModal: React.FC<ARViewModalProps> = ({
     rightArmAngle: 0,
     leftForearmAngle: 0,
     rightForearmAngle: 0,
+    isLeftHandInPouch: false,
+    isRightHandInPouch: false,
   });
   const trackerRef = useRef<AIPoseTracker | null>(null);
 
   // Detect iOS and Android for Native AR Launchers
   const isAndroid = useMemo(() => {
-    if (typeof navigator === 'undefined') return false;
-    return /android/i.test(navigator.userAgent);
+    return isAndroidDevice();
   }, []);
 
   const isIOS = useMemo(() => {
@@ -112,7 +113,7 @@ export const ARViewModal: React.FC<ARViewModalProps> = ({
     )};end;`;
   }, [productName]);
 
-  // Real-time AI Pose Tracking Frame Loop
+  // Real-time AI Pose Tracking Frame Loop (Adaptive Throttling for Android & Low-End Devices)
   useEffect(() => {
     if (!isOpen || !hasCamera || !isAiTracking) {
       setAiLocked(false);
@@ -125,6 +126,8 @@ export const ARViewModal: React.FC<ARViewModalProps> = ({
 
     let animationFrameId: number;
     let isActive = true;
+    let lastInferenceTime = 0;
+    const inferenceInterval = getPoseInferenceIntervalMs();
 
     const runPoseTracking = async () => {
       if (!isActive || !videoRef.current || videoRef.current.readyState < 2) {
@@ -134,27 +137,33 @@ export const ARViewModal: React.FC<ARViewModalProps> = ({
         return;
       }
 
-      try {
-        const pose = await trackerRef.current!.track(videoRef.current, facingMode === 'user');
-        if (pose && pose.isDetected && pose.confidence > 0.28) {
-          setAiLocked(true);
-          setAiOffset((prev) => ({
-            x: THREE.MathUtils.lerp(prev.x, pose.x, 0.22),
-            y: THREE.MathUtils.lerp(prev.y, pose.y, 0.22),
-            z: THREE.MathUtils.lerp(prev.z, pose.z, 0.16),
-            scale: THREE.MathUtils.lerp(prev.scale, pose.scale, 0.16),
-            rotationY: THREE.MathUtils.lerp(prev.rotationY, pose.rotationY, 0.18),
-            rotationZ: THREE.MathUtils.lerp(prev.rotationZ, pose.rotationZ, 0.20),
-            leftArmAngle: THREE.MathUtils.lerp(prev.leftArmAngle, pose.leftArmAngle || 0, 0.24),
-            rightArmAngle: THREE.MathUtils.lerp(prev.rightArmAngle, pose.rightArmAngle || 0, 0.24),
-            leftForearmAngle: THREE.MathUtils.lerp(prev.leftForearmAngle, pose.leftForearmAngle || 0, 0.24),
-            rightForearmAngle: THREE.MathUtils.lerp(prev.rightForearmAngle, pose.rightForearmAngle || 0, 0.24),
-          }));
-        } else {
+      const now = performance.now();
+      if (now - lastInferenceTime >= inferenceInterval) {
+        lastInferenceTime = now;
+        try {
+          const pose = await trackerRef.current!.track(videoRef.current, facingMode === 'user');
+          if (pose && pose.isDetected && pose.confidence > 0.28) {
+            setAiLocked(true);
+            setAiOffset((prev) => ({
+              x: THREE.MathUtils.lerp(prev.x, pose.x, 0.22),
+              y: THREE.MathUtils.lerp(prev.y, pose.y, 0.22),
+              z: THREE.MathUtils.lerp(prev.z, pose.z, 0.16),
+              scale: THREE.MathUtils.lerp(prev.scale, pose.scale, 0.16),
+              rotationY: THREE.MathUtils.lerp(prev.rotationY, pose.rotationY, 0.18),
+              rotationZ: THREE.MathUtils.lerp(prev.rotationZ, pose.rotationZ, 0.20),
+              leftArmAngle: THREE.MathUtils.lerp(prev.leftArmAngle, pose.leftArmAngle || 0, 0.24),
+              rightArmAngle: THREE.MathUtils.lerp(prev.rightArmAngle, pose.rightArmAngle || 0, 0.24),
+              leftForearmAngle: THREE.MathUtils.lerp(prev.leftForearmAngle, pose.leftForearmAngle || 0, 0.24),
+              rightForearmAngle: THREE.MathUtils.lerp(prev.rightForearmAngle, pose.rightForearmAngle || 0, 0.24),
+              isLeftHandInPouch: pose.isLeftHandInPouch,
+              isRightHandInPouch: pose.isRightHandInPouch,
+            }));
+          } else {
+            setAiLocked(false);
+          }
+        } catch {
           setAiLocked(false);
         }
-      } catch {
-        setAiLocked(false);
       }
 
       if (isActive) {
@@ -199,12 +208,14 @@ export const ARViewModal: React.FC<ARViewModalProps> = ({
     }
 
     try {
-      // 1. Try preferred facingMode with relaxed resolution
+      // 1. Try preferred facingMode with adaptive resolution for mobile & low-tier devices
+      const isLow = isLowEndHardware();
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: { ideal: mode },
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
+          width: { ideal: isLow ? 640 : 1280 },
+          height: { ideal: isLow ? 480 : 720 },
+          frameRate: { ideal: isLow ? 24 : 30, max: 30 },
         },
         audio: false,
       });
@@ -388,17 +399,17 @@ export const ARViewModal: React.FC<ARViewModalProps> = ({
             </a>
           )}
 
-          {/* Native Android Scene Viewer Button (GLB) */}
+          {/* Native Android Scene Viewer Button (GLB) - Fully visible on Mobile & Tablets */}
           {isAndroid && (
             <a
               href={sceneViewerUrl}
               target="_blank"
               rel="noreferrer"
               title="Launch Google Scene Viewer (ARCore Native)"
-              className="hidden sm:flex px-2.5 py-1 bg-[#CEFF00] text-black text-[10px] font-mono font-bold tracking-wider items-center gap-1.5 uppercase hover:bg-[#b8e600] transition-colors"
+              className="flex px-2 py-1 sm:px-2.5 sm:py-1 bg-[#CEFF00] text-black text-[10px] font-mono font-bold tracking-wider items-center gap-1.5 uppercase hover:bg-[#b8e600] transition-colors shadow-sm"
             >
               <Smartphone className="w-3.5 h-3.5" />
-              <span>{language === 'ar' ? 'Google AR مباشر' : 'LAUNCH ARCORE'}</span>
+              <span>{language === 'ar' ? 'Google AR مباشر' : 'ARCORE'}</span>
             </a>
           )}
 
@@ -542,6 +553,8 @@ export const ARViewModal: React.FC<ARViewModalProps> = ({
                   rightArmAngle={isAiTracking ? aiOffset.rightArmAngle : 0}
                   leftForearmAngle={isAiTracking ? aiOffset.leftForearmAngle : 0}
                   rightForearmAngle={isAiTracking ? aiOffset.rightForearmAngle : 0}
+                  isLeftHandInPouch={isAiTracking && aiOffset.isLeftHandInPouch}
+                  isRightHandInPouch={isAiTracking && aiOffset.isRightHandInPouch}
                 />
               </group>
             </Suspense>
@@ -562,7 +575,7 @@ export const ARViewModal: React.FC<ARViewModalProps> = ({
           <div className="flex flex-wrap justify-between items-center gap-1.5 text-[10px] font-mono text-[#CEFF00]">
             <div className="flex items-center gap-1.5">
               <span className="bg-[#111]/85 backdrop-blur-md px-2 py-0.5 border border-[#333]">
-                [ AR_MODE: {hasCamera ? (facingMode === 'user' ? 'MIRROR' : 'ROOM') : 'STUDIO'} ]
+                [ AR_MODE: {hasCamera ? (facingMode === 'user' ? 'MIRROR' : 'ROOM') : 'STUDIO'}{isLowEndHardware() ? ' • ECO' : ''} ]
               </span>
               {hasCamera && (
                 <span className={`backdrop-blur-md px-2 py-0.5 border font-bold flex items-center gap-1.5 transition-all ${
@@ -579,6 +592,8 @@ export const ARViewModal: React.FC<ARViewModalProps> = ({
               {aiLocked
                 ? `${(aiOffset.scale * 100).toFixed(0)}% FIT • ${(aiOffset.rotationZ * (180 / Math.PI)).toFixed(0)}° TILT${
                     Math.abs(aiOffset.leftArmAngle) > 0.12 || Math.abs(aiOffset.rightArmAngle) > 0.12 ? ' • ARMS RIGGED' : ''
+                  }${
+                    aiOffset.isLeftHandInPouch || aiOffset.isRightHandInPouch ? ' • POUCH ENGAGED' : ''
                   }`
                 : `1:1 SCALE • ${Math.round(arScale * 100)}%`}
             </span>

@@ -83,6 +83,8 @@ interface RealHoodieModelProps {
   rightArmAngle?: number;
   leftForearmAngle?: number;
   rightForearmAngle?: number;
+  isLeftHandInPouch?: boolean;
+  isRightHandInPouch?: boolean;
 }
 
 export const RealHoodieModel: React.FC<RealHoodieModelProps> = ({
@@ -97,17 +99,21 @@ export const RealHoodieModel: React.FC<RealHoodieModelProps> = ({
   rightArmAngle = 0,
   leftForearmAngle = 0,
   rightForearmAngle = 0,
+  isLeftHandInPouch = false,
+  isRightHandInPouch = false,
 }) => {
   const groupRef = useRef<THREE.Group>(null);
   const activeBackGraphicUrl = backGraphicUrl || graphicUrl;
 
-  // Real-time GPU Sleeve Dual-Joint Rigging & 520 GSM Fabric Physics Uniforms
+  // Real-time GPU Sleeve Dual-Joint Rigging, Kangaroo Pocket Tucking & 520 GSM Fabric Physics Uniforms
   const armUniforms = useRef({
     uLeftArmAngle: { value: 0 },
     uRightArmAngle: { value: 0 },
     uLeftForearmAngle: { value: 0 },
     uRightForearmAngle: { value: 0 },
     uClothSway: { value: new THREE.Vector2(0, 0) },
+    uLeftHandInPouch: { value: 0.0 },
+    uRightHandInPouch: { value: 0.0 },
   });
 
   // Inertia damping spring-mass state for dense 520 GSM Egyptian cotton
@@ -250,6 +256,8 @@ export const RealHoodieModel: React.FC<RealHoodieModelProps> = ({
         shader.uniforms.uLeftForearmAngle = armUniforms.current.uLeftForearmAngle;
         shader.uniforms.uRightForearmAngle = armUniforms.current.uRightForearmAngle;
         shader.uniforms.uClothSway = armUniforms.current.uClothSway;
+        shader.uniforms.uLeftHandInPouch = armUniforms.current.uLeftHandInPouch;
+        shader.uniforms.uRightHandInPouch = armUniforms.current.uRightHandInPouch;
 
         shader.vertexShader = `
           uniform float uLeftArmAngle;
@@ -257,6 +265,8 @@ export const RealHoodieModel: React.FC<RealHoodieModelProps> = ({
           uniform float uLeftForearmAngle;
           uniform float uRightForearmAngle;
           uniform vec2 uClothSway;
+          uniform float uLeftHandInPouch;
+          uniform float uRightHandInPouch;
         ` + shader.vertexShader;
 
         shader.vertexShader = shader.vertexShader.replace(
@@ -298,6 +308,13 @@ export const RealHoodieModel: React.FC<RealHoodieModelProps> = ({
               transformed = pe + elbowPivot;
             }
 
+            // Kangaroo Pouch Left Hand Tucking
+            if (uLeftHandInPouch > 0.01 && transformed.x > 0.45 && transformed.y < 0.0) {
+              float tuckWeight = smoothstep(0.45, 0.88, transformed.x) * uLeftHandInPouch;
+              vec3 pocketTarget = vec3(0.16, -0.38, 0.36);
+              transformed = mix(transformed, pocketTarget, tuckWeight * 0.72);
+            }
+
             // Cuff Inertia Lag
             float cuffWeight = smoothstep(0.74, 0.96, transformed.x);
             transformed.x += uClothSway.x * cuffWeight * 0.45;
@@ -327,9 +344,32 @@ export const RealHoodieModel: React.FC<RealHoodieModelProps> = ({
               transformed = pe + elbowPivot;
             }
 
+            // Kangaroo Pouch Right Hand Tucking
+            if (uRightHandInPouch > 0.01 && transformed.x < -0.45 && transformed.y < 0.0) {
+              float tuckWeight = smoothstep(0.45, 0.88, -transformed.x) * uRightHandInPouch;
+              vec3 pocketTarget = vec3(-0.16, -0.38, 0.36);
+              transformed = mix(transformed, pocketTarget, tuckWeight * 0.72);
+            }
+
             // Cuff Inertia Lag
             float cuffWeight = smoothstep(0.74, 0.96, -transformed.x);
             transformed.x += uClothSway.x * cuffWeight * 0.45;
+          }
+
+          // 3. Subtle Kangaroo Pouch Fabric Expansion when hand rests inside
+          if ((uLeftHandInPouch > 0.01 || uRightHandInPouch > 0.01) &&
+              abs(transformed.x) < 0.28 && transformed.y > -0.55 && transformed.y < -0.22 && transformed.z > 0.32) {
+            float pouchBulge = max(uLeftHandInPouch, uRightHandInPouch) * 0.024;
+            transformed.z += pouchBulge;
+          }
+
+          // 4. Facial & Chin Depth Collision Buffer (Prevents sleeve clipping through user face)
+          vec3 headCenter = vec3(0.0, 0.44, 0.08);
+          float headRadius = 0.28;
+          vec3 toHead = transformed - headCenter;
+          float dHead = length(toHead);
+          if (dHead < headRadius && dHead > 0.001) {
+            transformed += (toHead / dHead) * (headRadius - dHead);
           }
           `
         );
@@ -450,6 +490,20 @@ export const RealHoodieModel: React.FC<RealHoodieModelProps> = ({
       armUniforms.current.uRightForearmAngle.value,
       rightForearmAngle || 0,
       14.0,
+      delta
+    );
+
+    // Smooth GPU kangaroo pocket hand engagement damping
+    armUniforms.current.uLeftHandInPouch.value = THREE.MathUtils.damp(
+      armUniforms.current.uLeftHandInPouch.value,
+      isLeftHandInPouch ? 1.0 : 0.0,
+      12.0,
+      delta
+    );
+    armUniforms.current.uRightHandInPouch.value = THREE.MathUtils.damp(
+      armUniforms.current.uRightHandInPouch.value,
+      isRightHandInPouch ? 1.0 : 0.0,
+      12.0,
       delta
     );
 

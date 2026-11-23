@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { RealHoodieModel } from './RealHoodieModel';
 import { HoodieSculpt } from './HoodieSculpt';
 import { ProductColor } from '../../types';
+import { getOptimizedDpr } from '../../utils/performance';
 import { Layers, RotateCcw, Compass } from 'lucide-react';
 import type { OrbitControls as OrbitControlsType } from 'three-stdlib';
 
@@ -41,7 +42,8 @@ export const ProductViewer3D: React.FC<ProductViewer3DProps> = ({
     <div className="w-full h-full min-h-[440px] md:min-h-[560px] relative bg-[#0a0a0a] rounded-none overflow-hidden border border-[#222]">
       {/* 3D Canvas */}
       <Canvas
-        shadows
+        shadows={false}
+        dpr={getOptimizedDpr()}
         camera={{ position: [0, -0.05, 3.6], fov: 42 }}
         gl={{
           antialias: true,

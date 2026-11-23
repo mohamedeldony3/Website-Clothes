@@ -4,6 +4,11 @@
  * for low-end mobile devices and power-saving laptops.
  */
 
+export function isAndroidDevice(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  return /Android/i.test(navigator.userAgent);
+}
+
 export function isLowEndHardware(): boolean {
   if (typeof window === 'undefined') return false;
 
@@ -17,7 +22,7 @@ export function isLowEndHardware(): boolean {
   const deviceMem = typeof navigator !== 'undefined' && (navigator as any).deviceMemory ? (navigator as any).deviceMemory : 8;
   const isLowRAM = deviceMem <= 4;
 
-  return isMobileScreen || (isWeakCPU && isLowRAM);
+  return isMobileScreen || isWeakCPU || isLowRAM || isAndroidDevice();
 }
 
 /**
@@ -30,10 +35,20 @@ export function getOptimizedDpr(): [number, number] {
   const screenDpr = window.devicePixelRatio || 1;
 
   if (isLow) {
-    // Mobile or low-end: limit to max 1.25 to prevent thermal throttling
-    return [1, Math.min(screenDpr, 1.25)];
+    // Mobile or low-end: limit to max 1.15 to prevent thermal throttling and memory pressure
+    return [1, Math.min(screenDpr, 1.15)];
   }
 
   // Desktop or high-end: crisp visual fidelity capped at 1.5
   return [1, Math.min(screenDpr, 1.5)];
+}
+
+/**
+ * Throttles pose tracking inference interval based on device capabilities:
+ * Low-end / Android: runs inference every 55ms (~18 FPS)
+ * High-end desktop: runs inference every 28ms (~35 FPS)
+ * Both render Three.js at 60 FPS with smooth LERP damping.
+ */
+export function getPoseInferenceIntervalMs(): number {
+  return isLowEndHardware() ? 55 : 28;
 }

@@ -21,6 +21,8 @@ export interface TrackedPose {
   rightArmAngle: number; // Right upper arm elevation angle in radians
   leftForearmAngle: number;  // Independent left forearm/elbow bend angle in radians
   rightForearmAngle: number; // Independent right forearm/elbow bend angle in radians
+  isLeftHandInPouch: boolean;  // Left hand inserted into front kangaroo pocket
+  isRightHandInPouch: boolean; // Right hand inserted into front kangaroo pocket
   confidence: number;    // Detection confidence [0 - 1]
   isDetected: boolean;
 }
@@ -166,6 +168,8 @@ export class AIPoseTracker {
         rightArmAngle: 0,
         leftForearmAngle: 0,
         rightForearmAngle: 0,
+        isLeftHandInPouch: false,
+        isRightHandInPouch: false,
         confidence: 0,
         isDetected: false,
       };
@@ -187,6 +191,10 @@ export class AIPoseTracker {
             const rightElbow = marks[14];
             const leftWrist = marks[15];
             const rightWrist = marks[16];
+            const leftIndex = marks[19];
+            const rightIndex = marks[20];
+            const leftHip = marks[23];
+            const rightHip = marks[24];
 
             // Verify both shoulders are visible in frame
             const leftVis = leftShoulder?.visibility ?? 1;
@@ -258,6 +266,29 @@ export class AIPoseTracker {
                 }
               }
 
+              // Kangaroo Pouch Engagement Detection: Hands placed inside lower front pouch
+              const hipY = (leftHip && rightHip) ? (leftHip.y + rightHip.y) / 2 : midY + shoulderSpan * 1.35;
+              const pouchTop = midY + (hipY - midY) * 0.42;
+              const pouchBottom = hipY + 0.08;
+              const pouchWidth = Math.abs(dx) * 0.42;
+
+              const leftHandPt = leftIndex || leftWrist;
+              const rightHandPt = rightIndex || rightWrist;
+
+              const isLeftInPouch = !!(
+                leftHandPt &&
+                leftHandPt.y >= pouchTop &&
+                leftHandPt.y <= pouchBottom &&
+                Math.abs(leftHandPt.x - midX) <= pouchWidth
+              );
+
+              const isRightInPouch = !!(
+                rightHandPt &&
+                rightHandPt.y >= pouchTop &&
+                rightHandPt.y <= pouchBottom &&
+                Math.abs(rightHandPt.x - midX) <= pouchWidth
+              );
+
               return {
                 x: worldX,
                 y: worldY,
@@ -269,6 +300,8 @@ export class AIPoseTracker {
                 rightArmAngle: isSelfie ? leftUpperArmAngle : rightUpperArmAngle,
                 leftForearmAngle: isSelfie ? rightForearmAngle : leftForearmAngle,
                 rightForearmAngle: isSelfie ? leftForearmAngle : rightForearmAngle,
+                isLeftHandInPouch: isSelfie ? isRightInPouch : isLeftInPouch,
+                isRightHandInPouch: isSelfie ? isLeftInPouch : isRightInPouch,
                 confidence: 0.98,
                 isDetected: true,
               };
@@ -335,6 +368,8 @@ export class AIPoseTracker {
             rightArmAngle: 0,
             leftForearmAngle: 0,
             rightForearmAngle: 0,
+            isLeftHandInPouch: false,
+            isRightHandInPouch: false,
             confidence: 0.72,
             isDetected: true,
           };
@@ -355,6 +390,8 @@ export class AIPoseTracker {
       rightArmAngle: 0,
       leftForearmAngle: 0,
       rightForearmAngle: 0,
+      isLeftHandInPouch: false,
+      isRightHandInPouch: false,
       confidence: 0,
       isDetected: false,
     };
