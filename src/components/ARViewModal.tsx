@@ -73,7 +73,7 @@ export const ARViewModal: React.FC<ARViewModalProps> = ({
   const [capturedPhoto, setCapturedPhoto] = useState<string | null>(null);
   const [isCapturing, setIsCapturing] = useState(false);
 
-  // AI Upper-Torso & Arm Articulation Tracking State
+  // AI Upper-Torso & Dual-Joint Arm Articulation Tracking State
   const [isAiTracking, setIsAiTracking] = useState(true);
   const [aiLocked, setAiLocked] = useState(false);
   const [aiOffset, setAiOffset] = useState({
@@ -85,6 +85,8 @@ export const ARViewModal: React.FC<ARViewModalProps> = ({
     rotationZ: 0,
     leftArmAngle: 0,
     rightArmAngle: 0,
+    leftForearmAngle: 0,
+    rightForearmAngle: 0,
   });
   const trackerRef = useRef<AIPoseTracker | null>(null);
 
@@ -145,6 +147,8 @@ export const ARViewModal: React.FC<ARViewModalProps> = ({
             rotationZ: THREE.MathUtils.lerp(prev.rotationZ, pose.rotationZ, 0.20),
             leftArmAngle: THREE.MathUtils.lerp(prev.leftArmAngle, pose.leftArmAngle || 0, 0.24),
             rightArmAngle: THREE.MathUtils.lerp(prev.rightArmAngle, pose.rightArmAngle || 0, 0.24),
+            leftForearmAngle: THREE.MathUtils.lerp(prev.leftForearmAngle, pose.leftForearmAngle || 0, 0.24),
+            rightForearmAngle: THREE.MathUtils.lerp(prev.rightForearmAngle, pose.rightForearmAngle || 0, 0.24),
           }));
         } else {
           setAiLocked(false);
@@ -536,6 +540,8 @@ export const ARViewModal: React.FC<ARViewModalProps> = ({
                   isBackView={isBackView}
                   leftArmAngle={isAiTracking ? aiOffset.leftArmAngle : 0}
                   rightArmAngle={isAiTracking ? aiOffset.rightArmAngle : 0}
+                  leftForearmAngle={isAiTracking ? aiOffset.leftForearmAngle : 0}
+                  rightForearmAngle={isAiTracking ? aiOffset.rightForearmAngle : 0}
                 />
               </group>
             </Suspense>

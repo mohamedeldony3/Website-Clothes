@@ -17,8 +17,10 @@ export interface TrackedPose {
   scale: number;         // Proportional 3D scale matched to user shoulders
   rotationY: number;     // Torso yaw (turning left/right)
   rotationZ: number;     // Torso roll (tilting left/right)
-  leftArmAngle: number;  // Left arm/sleeve elevation angle in radians
-  rightArmAngle: number; // Right arm/sleeve elevation angle in radians
+  leftArmAngle: number;  // Left upper arm elevation angle in radians
+  rightArmAngle: number; // Right upper arm elevation angle in radians
+  leftForearmAngle: number;  // Independent left forearm/elbow bend angle in radians
+  rightForearmAngle: number; // Independent right forearm/elbow bend angle in radians
   confidence: number;    // Detection confidence [0 - 1]
   isDetected: boolean;
 }
@@ -162,6 +164,8 @@ export class AIPoseTracker {
         rotationZ: 0,
         leftArmAngle: 0,
         rightArmAngle: 0,
+        leftForearmAngle: 0,
+        rightForearmAngle: 0,
         confidence: 0,
         isDetected: false,
       };
@@ -181,6 +185,8 @@ export class AIPoseTracker {
             const rightShoulder = marks[12];
             const leftElbow = marks[13];
             const rightElbow = marks[14];
+            const leftWrist = marks[15];
+            const rightWrist = marks[16];
 
             // Verify both shoulders are visible in frame
             const leftVis = leftShoulder?.visibility ?? 1;
@@ -214,26 +220,42 @@ export class AIPoseTracker {
               const yawAngle = Math.atan2(dz, Math.max(0.08, Math.abs(dx)));
               const rotationY = isSelfie ? yawAngle * 1.15 : -yawAngle * 1.15;
 
-              // Sleeve Arm Articulation: Calculate arm lift/elevation angles
-              let leftArmAngle = 0;
-              let rightArmAngle = 0;
+              // Sleeve Arm & Forearm Articulation (2-Bone Kinematic Rigging)
+              let leftUpperArmAngle = 0;
+              let rightUpperArmAngle = 0;
+              let leftForearmAngle = 0;
+              let rightForearmAngle = 0;
 
-              // Left Arm (anatomical left)
+              // 1. Left Arm (Upper Arm + Forearm flexion)
               if (leftElbow && (leftElbow.visibility ?? 1) > 0.25) {
-                const armDx = leftElbow.x - leftShoulder.x;
-                const armDy = leftElbow.y - leftShoulder.y;
-                // Resting angle in hoodie is ~0.45 rad outward. Calculate delta from resting pose:
-                const angle = Math.atan2(armDx, Math.max(0.01, armDy));
-                leftArmAngle = Math.max(-0.4, Math.min(1.35, (angle - 0.42) * 1.25));
+                const uDx = leftElbow.x - leftShoulder.x;
+                const uDy = leftElbow.y - leftShoulder.y;
+                const uAngle = Math.atan2(uDx, Math.max(0.01, uDy));
+                leftUpperArmAngle = Math.max(-0.4, Math.min(1.35, (uAngle - 0.42) * 1.25));
+
+                if (leftWrist && (leftWrist.visibility ?? 1) > 0.25) {
+                  const fDx = leftWrist.x - leftElbow.x;
+                  const fDy = leftWrist.y - leftElbow.y;
+                  const fAngle = Math.atan2(fDx, fDy);
+                  const elbowFlexion = fAngle - uAngle;
+                  leftForearmAngle = Math.max(-0.2, Math.min(1.65, Math.abs(elbowFlexion) * 1.15));
+                }
               }
 
-              // Right Arm (anatomical right)
+              // 2. Right Arm (Upper Arm + Forearm flexion)
               if (rightElbow && (rightElbow.visibility ?? 1) > 0.25) {
-                const armDx = rightElbow.x - rightShoulder.x;
-                const armDy = rightElbow.y - rightShoulder.y;
-                // Resting angle in hoodie is ~ -0.45 rad outward
-                const angle = Math.atan2(-armDx, Math.max(0.01, armDy));
-                rightArmAngle = Math.max(-0.4, Math.min(1.35, (angle - 0.42) * 1.25));
+                const uDx = rightElbow.x - rightShoulder.x;
+                const uDy = rightElbow.y - rightShoulder.y;
+                const uAngle = Math.atan2(-uDx, Math.max(0.01, uDy));
+                rightUpperArmAngle = Math.max(-0.4, Math.min(1.35, (uAngle - 0.42) * 1.25));
+
+                if (rightWrist && (rightWrist.visibility ?? 1) > 0.25) {
+                  const fDx = rightWrist.x - rightElbow.x;
+                  const fDy = rightWrist.y - rightElbow.y;
+                  const fAngle = Math.atan2(-fDx, fDy);
+                  const elbowFlexion = fAngle - uAngle;
+                  rightForearmAngle = Math.max(-0.2, Math.min(1.65, Math.abs(elbowFlexion) * 1.15));
+                }
               }
 
               return {
@@ -243,8 +265,10 @@ export class AIPoseTracker {
                 scale: targetScale,
                 rotationY,
                 rotationZ,
-                leftArmAngle: isSelfie ? rightArmAngle : leftArmAngle,
-                rightArmAngle: isSelfie ? leftArmAngle : rightArmAngle,
+                leftArmAngle: isSelfie ? rightUpperArmAngle : leftUpperArmAngle,
+                rightArmAngle: isSelfie ? leftUpperArmAngle : rightUpperArmAngle,
+                leftForearmAngle: isSelfie ? rightForearmAngle : leftForearmAngle,
+                rightForearmAngle: isSelfie ? leftForearmAngle : rightForearmAngle,
                 confidence: 0.98,
                 isDetected: true,
               };
@@ -309,6 +333,8 @@ export class AIPoseTracker {
             rotationZ: 0,
             leftArmAngle: 0,
             rightArmAngle: 0,
+            leftForearmAngle: 0,
+            rightForearmAngle: 0,
             confidence: 0.72,
             isDetected: true,
           };
@@ -327,6 +353,8 @@ export class AIPoseTracker {
       rotationZ: 0,
       leftArmAngle: 0,
       rightArmAngle: 0,
+      leftForearmAngle: 0,
+      rightForearmAngle: 0,
       confidence: 0,
       isDetected: false,
     };

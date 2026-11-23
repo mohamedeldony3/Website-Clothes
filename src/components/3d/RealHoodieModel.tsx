@@ -81,6 +81,8 @@ interface RealHoodieModelProps {
   isBackView?: boolean;
   leftArmAngle?: number;
   rightArmAngle?: number;
+  leftForearmAngle?: number;
+  rightForearmAngle?: number;
 }
 
 export const RealHoodieModel: React.FC<RealHoodieModelProps> = ({
@@ -93,14 +95,30 @@ export const RealHoodieModel: React.FC<RealHoodieModelProps> = ({
   isBackView = false,
   leftArmAngle = 0,
   rightArmAngle = 0,
+  leftForearmAngle = 0,
+  rightForearmAngle = 0,
 }) => {
   const groupRef = useRef<THREE.Group>(null);
   const activeBackGraphicUrl = backGraphicUrl || graphicUrl;
 
-  // Real-time GPU Sleeve Articulation Uniforms (MediaPipe Arm Rigging)
+  // Real-time GPU Sleeve Dual-Joint Rigging & 520 GSM Fabric Physics Uniforms
   const armUniforms = useRef({
     uLeftArmAngle: { value: 0 },
     uRightArmAngle: { value: 0 },
+    uLeftForearmAngle: { value: 0 },
+    uRightForearmAngle: { value: 0 },
+    uClothSway: { value: new THREE.Vector2(0, 0) },
+  });
+
+  // Inertia damping spring-mass state for dense 520 GSM Egyptian cotton
+  const clothPhysics = useRef({
+    dispX: 0,
+    dispY: 0,
+    velX: 0,
+    velY: 0,
+    prevX: 0,
+    prevY: 0,
+    hasInitialized: false,
   });
 
   // Load the authentic, seamless pullover hoodie model (with MeshoptDecoder)
@@ -229,10 +247,16 @@ export const RealHoodieModel: React.FC<RealHoodieModelProps> = ({
       mat.onBeforeCompile = (shader) => {
         shader.uniforms.uLeftArmAngle = armUniforms.current.uLeftArmAngle;
         shader.uniforms.uRightArmAngle = armUniforms.current.uRightArmAngle;
+        shader.uniforms.uLeftForearmAngle = armUniforms.current.uLeftForearmAngle;
+        shader.uniforms.uRightForearmAngle = armUniforms.current.uRightForearmAngle;
+        shader.uniforms.uClothSway = armUniforms.current.uClothSway;
 
         shader.vertexShader = `
           uniform float uLeftArmAngle;
           uniform float uRightArmAngle;
+          uniform float uLeftForearmAngle;
+          uniform float uRightForearmAngle;
+          uniform vec2 uClothSway;
         ` + shader.vertexShader;
 
         shader.vertexShader = shader.vertexShader.replace(
@@ -240,27 +264,72 @@ export const RealHoodieModel: React.FC<RealHoodieModelProps> = ({
           `
           #include <begin_vertex>
 
-          // Real-time GPU Sleeve Articulation (MediaPipe Arm Rigging)
+          // 1. Heavyweight 520 GSM Fabric Inertia Damping: Hem sway
+          if (transformed.y < -0.15) {
+            float hemWeight = smoothstep(-0.15, -0.85, transformed.y);
+            transformed.x += uClothSway.x * hemWeight;
+            transformed.z += uClothSway.y * hemWeight * 0.6;
+          }
+
+          // 2. Dual-Joint Sleeve Kinematics (Shoulder + Independent Forearm / Elbow Rigging)
           if (transformed.x > 0.36) {
+            // Upper Arm Rotation around Shoulder Pivot
             float armWeight = smoothstep(0.36, 0.68, transformed.x);
-            vec3 pivot = vec3(0.42, 0.30, 0.0);
-            vec3 p = transformed - pivot;
+            vec3 shoulderPivot = vec3(0.42, 0.30, 0.0);
+            vec3 p = transformed - shoulderPivot;
             float angle = uLeftArmAngle * armWeight;
             float c = cos(angle);
             float s = sin(angle);
             mat2 rot = mat2(c, -s, s, c);
             p.xy = rot * p.xy;
-            transformed = p + pivot;
+            transformed = p + shoulderPivot;
+
+            // Independent Forearm Splitting around Elbow Pivot
+            if (transformed.x > 0.62) {
+              float elbowWeight = smoothstep(0.62, 0.78, transformed.x);
+              vec3 elbowPivot = vec3(0.65, 0.02, 0.0);
+              vec3 pe = transformed - elbowPivot;
+              float ebAngle = uLeftForearmAngle * elbowWeight;
+              float ce = cos(ebAngle);
+              float se = sin(ebAngle);
+              mat2 rotElbow = mat2(ce, -se, se, ce);
+              pe.xy = rotElbow * pe.xy;
+              pe.z += se * 0.16 * elbowWeight;
+              transformed = pe + elbowPivot;
+            }
+
+            // Cuff Inertia Lag
+            float cuffWeight = smoothstep(0.74, 0.96, transformed.x);
+            transformed.x += uClothSway.x * cuffWeight * 0.45;
           } else if (transformed.x < -0.36) {
+            // Upper Arm Rotation around Right Shoulder Pivot
             float armWeight = smoothstep(0.36, 0.68, -transformed.x);
-            vec3 pivot = vec3(-0.42, 0.30, 0.0);
-            vec3 p = transformed - pivot;
+            vec3 shoulderPivot = vec3(-0.42, 0.30, 0.0);
+            vec3 p = transformed - shoulderPivot;
             float angle = -uRightArmAngle * armWeight;
             float c = cos(angle);
             float s = sin(angle);
             mat2 rot = mat2(c, -s, s, c);
             p.xy = rot * p.xy;
-            transformed = p + pivot;
+            transformed = p + shoulderPivot;
+
+            // Independent Forearm Splitting around Right Elbow Pivot
+            if (transformed.x < -0.62) {
+              float elbowWeight = smoothstep(0.62, 0.78, -transformed.x);
+              vec3 elbowPivot = vec3(-0.65, 0.02, 0.0);
+              vec3 pe = transformed - elbowPivot;
+              float ebAngle = -uRightForearmAngle * elbowWeight;
+              float ce = cos(ebAngle);
+              float se = sin(ebAngle);
+              mat2 rotElbow = mat2(ce, -se, se, ce);
+              pe.xy = rotElbow * pe.xy;
+              pe.z += abs(se) * 0.16 * elbowWeight;
+              transformed = pe + elbowPivot;
+            }
+
+            // Cuff Inertia Lag
+            float cuffWeight = smoothstep(0.74, 0.96, -transformed.x);
+            transformed.x += uClothSway.x * cuffWeight * 0.45;
           }
           `
         );
@@ -369,6 +438,54 @@ export const RealHoodieModel: React.FC<RealHoodieModelProps> = ({
       12.0,
       delta
     );
+
+    // Smooth GPU independent forearm flexion / elbow bend damping
+    armUniforms.current.uLeftForearmAngle.value = THREE.MathUtils.damp(
+      armUniforms.current.uLeftForearmAngle.value,
+      leftForearmAngle || 0,
+      14.0,
+      delta
+    );
+    armUniforms.current.uRightForearmAngle.value = THREE.MathUtils.damp(
+      armUniforms.current.uRightForearmAngle.value,
+      rightForearmAngle || 0,
+      14.0,
+      delta
+    );
+
+    // 520 GSM Heavyweight Loopback Cotton Inertia Damping Simulation
+    // Tracks body translation velocity to calculate natural physical hem & cuff sway
+    const currentWorldPos = new THREE.Vector3();
+    groupRef.current.getWorldPosition(currentWorldPos);
+
+    if (!clothPhysics.current.hasInitialized) {
+      clothPhysics.current.prevX = currentWorldPos.x;
+      clothPhysics.current.prevY = currentWorldPos.y;
+      clothPhysics.current.hasInitialized = true;
+    } else {
+      const dt = Math.max(0.001, Math.min(0.1, delta));
+      const vx = (currentWorldPos.x - clothPhysics.current.prevX) / dt;
+      const vy = (currentWorldPos.y - clothPhysics.current.prevY) / dt;
+      clothPhysics.current.prevX = currentWorldPos.x;
+      clothPhysics.current.prevY = currentWorldPos.y;
+
+      // Heavy fabric spring constant k=35, damping c=8.2, inertial mass=1.0
+      const springK = 35.0;
+      const dampingC = 8.2;
+      const forceX = -vx * 0.08 - springK * clothPhysics.current.dispX - dampingC * clothPhysics.current.velX;
+      const forceY = -vy * 0.06 - springK * clothPhysics.current.dispY - dampingC * clothPhysics.current.velY;
+
+      clothPhysics.current.velX += forceX * dt;
+      clothPhysics.current.velY += forceY * dt;
+      clothPhysics.current.dispX += clothPhysics.current.velX * dt;
+      clothPhysics.current.dispY += clothPhysics.current.velY * dt;
+
+      // Realistic physical limits for dense cotton draping
+      clothPhysics.current.dispX = THREE.MathUtils.clamp(clothPhysics.current.dispX, -0.08, 0.08);
+      clothPhysics.current.dispY = THREE.MathUtils.clamp(clothPhysics.current.dispY, -0.06, 0.06);
+
+      armUniforms.current.uClothSway.value.set(clothPhysics.current.dispX, clothPhysics.current.dispY);
+    }
   });
 
   return (
