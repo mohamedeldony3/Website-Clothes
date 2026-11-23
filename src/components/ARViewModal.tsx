@@ -73,7 +73,7 @@ export const ARViewModal: React.FC<ARViewModalProps> = ({
   const [capturedPhoto, setCapturedPhoto] = useState<string | null>(null);
   const [isCapturing, setIsCapturing] = useState(false);
 
-  // AI Upper-Torso Tracking State
+  // AI Upper-Torso & Arm Articulation Tracking State
   const [isAiTracking, setIsAiTracking] = useState(true);
   const [aiLocked, setAiLocked] = useState(false);
   const [aiOffset, setAiOffset] = useState({
@@ -83,6 +83,8 @@ export const ARViewModal: React.FC<ARViewModalProps> = ({
     scale: 1.0,
     rotationY: 0,
     rotationZ: 0,
+    leftArmAngle: 0,
+    rightArmAngle: 0,
   });
   const trackerRef = useRef<AIPoseTracker | null>(null);
 
@@ -141,6 +143,8 @@ export const ARViewModal: React.FC<ARViewModalProps> = ({
             scale: THREE.MathUtils.lerp(prev.scale, pose.scale, 0.16),
             rotationY: THREE.MathUtils.lerp(prev.rotationY, pose.rotationY, 0.18),
             rotationZ: THREE.MathUtils.lerp(prev.rotationZ, pose.rotationZ, 0.20),
+            leftArmAngle: THREE.MathUtils.lerp(prev.leftArmAngle, pose.leftArmAngle || 0, 0.24),
+            rightArmAngle: THREE.MathUtils.lerp(prev.rightArmAngle, pose.rightArmAngle || 0, 0.24),
           }));
         } else {
           setAiLocked(false);
@@ -530,6 +534,8 @@ export const ARViewModal: React.FC<ARViewModalProps> = ({
                   frontGraphicUrl={frontGraphicUrl}
                   backGraphicUrl={backGraphicUrl || graphicUrl}
                   isBackView={isBackView}
+                  leftArmAngle={isAiTracking ? aiOffset.leftArmAngle : 0}
+                  rightArmAngle={isAiTracking ? aiOffset.rightArmAngle : 0}
                 />
               </group>
             </Suspense>
@@ -565,7 +571,9 @@ export const ARViewModal: React.FC<ARViewModalProps> = ({
             </div>
             <span className="bg-[#111]/85 backdrop-blur-md px-2 py-0.5 border border-[#333]">
               {aiLocked
-                ? `${(aiOffset.scale * 100).toFixed(0)}% BODY FIT • ${(aiOffset.rotationZ * (180 / Math.PI)).toFixed(0)}° TILT`
+                ? `${(aiOffset.scale * 100).toFixed(0)}% FIT • ${(aiOffset.rotationZ * (180 / Math.PI)).toFixed(0)}° TILT${
+                    Math.abs(aiOffset.leftArmAngle) > 0.12 || Math.abs(aiOffset.rightArmAngle) > 0.12 ? ' • ARMS RIGGED' : ''
+                  }`
                 : `1:1 SCALE • ${Math.round(arScale * 100)}%`}
             </span>
           </div>

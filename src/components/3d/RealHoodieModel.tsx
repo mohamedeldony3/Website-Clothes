@@ -79,6 +79,8 @@ interface RealHoodieModelProps {
   frontGraphicUrl?: string;
   backGraphicUrl?: string;
   isBackView?: boolean;
+  leftArmAngle?: number;
+  rightArmAngle?: number;
 }
 
 export const RealHoodieModel: React.FC<RealHoodieModelProps> = ({
@@ -89,9 +91,17 @@ export const RealHoodieModel: React.FC<RealHoodieModelProps> = ({
   frontGraphicUrl,
   backGraphicUrl,
   isBackView = false,
+  leftArmAngle = 0,
+  rightArmAngle = 0,
 }) => {
   const groupRef = useRef<THREE.Group>(null);
   const activeBackGraphicUrl = backGraphicUrl || graphicUrl;
+
+  // Real-time GPU Sleeve Articulation Uniforms (MediaPipe Arm Rigging)
+  const armUniforms = useRef({
+    uLeftArmAngle: { value: 0 },
+    uRightArmAngle: { value: 0 },
+  });
 
   // Load the authentic, seamless pullover hoodie model (with MeshoptDecoder)
   const { scene } = useGLTF('/models/pullover_hoodie.glb', undefined, undefined, (loader) => {
@@ -215,6 +225,48 @@ export const RealHoodieModel: React.FC<RealHoodieModelProps> = ({
     const activeHex = color || '#f0f0ee';
     const baseColor = getCalibratedGarmentColor(activeHex);
 
+    const attachSleeveRigging = (mat: THREE.MeshStandardMaterial) => {
+      mat.onBeforeCompile = (shader) => {
+        shader.uniforms.uLeftArmAngle = armUniforms.current.uLeftArmAngle;
+        shader.uniforms.uRightArmAngle = armUniforms.current.uRightArmAngle;
+
+        shader.vertexShader = `
+          uniform float uLeftArmAngle;
+          uniform float uRightArmAngle;
+        ` + shader.vertexShader;
+
+        shader.vertexShader = shader.vertexShader.replace(
+          '#include <begin_vertex>',
+          `
+          #include <begin_vertex>
+
+          // Real-time GPU Sleeve Articulation (MediaPipe Arm Rigging)
+          if (transformed.x > 0.36) {
+            float armWeight = smoothstep(0.36, 0.68, transformed.x);
+            vec3 pivot = vec3(0.42, 0.30, 0.0);
+            vec3 p = transformed - pivot;
+            float angle = uLeftArmAngle * armWeight;
+            float c = cos(angle);
+            float s = sin(angle);
+            mat2 rot = mat2(c, -s, s, c);
+            p.xy = rot * p.xy;
+            transformed = p + pivot;
+          } else if (transformed.x < -0.36) {
+            float armWeight = smoothstep(0.36, 0.68, -transformed.x);
+            vec3 pivot = vec3(-0.42, 0.30, 0.0);
+            vec3 p = transformed - pivot;
+            float angle = -uRightArmAngle * armWeight;
+            float c = cos(angle);
+            float s = sin(angle);
+            mat2 rot = mat2(c, -s, s, c);
+            p.xy = rot * p.xy;
+            transformed = p + pivot;
+          }
+          `
+        );
+      };
+    };
+
     wrapper.traverse((child) => {
       if ((child as THREE.Mesh).isMesh) {
         const mesh = child as THREE.Mesh;
@@ -224,16 +276,17 @@ export const RealHoodieModel: React.FC<RealHoodieModelProps> = ({
         if (mesh.material && (mesh.material as THREE.MeshStandardMaterial).isMeshStandardMaterial) {
           const mat = mesh.material as THREE.MeshStandardMaterial;
           mat.color.copy(baseColor);
-          mat.roughness = 0.84;
+          mat.roughness = 0.82;
           mat.metalness = 0.0;
           mat.wireframe = wireframe;
           mat.bumpMap = bumpMap;
           mat.bumpScale = 0.008;
+          attachSleeveRigging(mat);
           mat.needsUpdate = true;
         } else {
-          mesh.material = new THREE.MeshStandardMaterial({
+          const newMat = new THREE.MeshStandardMaterial({
             color: baseColor.clone(),
-            roughness: 0.84,
+            roughness: 0.82,
             metalness: 0.0,
             side: THREE.DoubleSide,
             transparent: false,
@@ -244,6 +297,8 @@ export const RealHoodieModel: React.FC<RealHoodieModelProps> = ({
             bumpMap: bumpMap,
             bumpScale: 0.008,
           });
+          attachSleeveRigging(newMat);
+          mesh.material = newMat;
         }
       }
     });
@@ -298,6 +353,20 @@ export const RealHoodieModel: React.FC<RealHoodieModelProps> = ({
       groupRef.current.rotation.y,
       targetRotationY,
       7.0,
+      delta
+    );
+
+    // Smooth GPU sleeve arm elevation damping
+    armUniforms.current.uLeftArmAngle.value = THREE.MathUtils.damp(
+      armUniforms.current.uLeftArmAngle.value,
+      leftArmAngle || 0,
+      12.0,
+      delta
+    );
+    armUniforms.current.uRightArmAngle.value = THREE.MathUtils.damp(
+      armUniforms.current.uRightArmAngle.value,
+      rightArmAngle || 0,
+      12.0,
       delta
     );
   });

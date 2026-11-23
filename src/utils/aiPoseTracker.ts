@@ -1,24 +1,32 @@
 import { FilesetResolver, PoseLandmarker } from '@mediapipe/tasks-vision';
 
 /**
- * Intelligent Client-Side AI Pose & Upper-Body Tracker
+ * Intelligent Client-Side AI Pose, Torso & Arm Articulation Tracker
  * Powered by Google MediaPipe PoseLandmarker (WASM/WebGL GPU)
  * - Detects 33 human skeletal landmarks at 60 FPS.
- * - Extracts shoulders (11, 12), collarbone, hips (23, 24), and torso depth.
- * - Real-time auto-scaling, position snapping, and roll/yaw rotation.
+ * - Extracts shoulders (11, 12), elbows (13, 14), wrists (15, 16), collar, and torso depth.
+ * - Real-time auto-scaling, position snapping, roll/yaw rotation, and sleeve elevation angles.
+ * - Uses Cache Storage API & local model asset for instant offline loading.
  * - Graceful fallback to optical centroid tracking if offline or loading.
  */
 
 export interface TrackedPose {
-  x: number;          // 3D world space X offset
-  y: number;          // 3D world space Y offset
-  z: number;          // 3D world space Z depth offset
-  scale: number;      // Proportional 3D scale matched to user shoulders
-  rotationY: number;  // Torso yaw (turning left/right)
-  rotationZ: number;  // Torso roll (tilting left/right)
-  confidence: number; // Detection confidence [0 - 1]
+  x: number;             // 3D world space X offset
+  y: number;             // 3D world space Y offset
+  z: number;             // 3D world space Z depth offset
+  scale: number;         // Proportional 3D scale matched to user shoulders
+  rotationY: number;     // Torso yaw (turning left/right)
+  rotationZ: number;     // Torso roll (tilting left/right)
+  leftArmAngle: number;  // Left arm/sleeve elevation angle in radians
+  rightArmAngle: number; // Right arm/sleeve elevation angle in radians
+  confidence: number;    // Detection confidence [0 - 1]
   isDetected: boolean;
 }
+
+const CACHE_NAME = 'mono-vision-weights-v1';
+const LOCAL_MODEL_PATH = '/models/pose_landmarker_lite.task';
+const CDN_MODEL_PATH =
+  'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task';
 
 export class AIPoseTracker {
   private poseLandmarker: PoseLandmarker | null = null;
@@ -43,6 +51,34 @@ export class AIPoseTracker {
   }
 
   /**
+   * Pre-cache model file in Cache Storage API for instant offline loads
+   */
+  private async getOptimizedModelUrl(): Promise<string> {
+    if (typeof window === 'undefined' || !('caches' in window)) {
+      return LOCAL_MODEL_PATH;
+    }
+
+    try {
+      const cache = await caches.open(CACHE_NAME);
+      const match = await cache.match(LOCAL_MODEL_PATH);
+      if (match) {
+        return LOCAL_MODEL_PATH;
+      }
+
+      // Pre-cache local model in background
+      fetch(LOCAL_MODEL_PATH)
+        .then((res) => {
+          if (res.ok) cache.put(LOCAL_MODEL_PATH, res.clone());
+        })
+        .catch(() => {});
+    } catch {
+      // ignore
+    }
+
+    return LOCAL_MODEL_PATH;
+  }
+
+  /**
    * Asynchronously load Google MediaPipe Pose Vision WASM & Lite Model
    */
   public async initPoseLandmarker(): Promise<void> {
@@ -54,12 +90,13 @@ export class AIPoseTracker {
         'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.18/wasm'
       );
 
-      // Attempt WebGL GPU acceleration first
+      const modelPath = await this.getOptimizedModelUrl();
+
+      // 1. Attempt WebGL GPU acceleration first with local model
       try {
         this.poseLandmarker = await PoseLandmarker.createFromOptions(vision, {
           baseOptions: {
-            modelAssetPath:
-              'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task',
+            modelAssetPath: modelPath,
             delegate: 'GPU',
           },
           runningMode: 'VIDEO',
@@ -69,24 +106,41 @@ export class AIPoseTracker {
           minTrackingConfidence: 0.45,
         });
         this.isModelReady = true;
-      } catch (gpuErr) {
-        console.warn('MediaPipe GPU delegate unavailable, trying CPU:', gpuErr);
-        this.poseLandmarker = await PoseLandmarker.createFromOptions(vision, {
-          baseOptions: {
-            modelAssetPath:
-              'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task',
-            delegate: 'CPU',
-          },
-          runningMode: 'VIDEO',
-          numPoses: 1,
-          minPoseDetectionConfidence: 0.45,
-          minPosePresenceConfidence: 0.45,
-          minTrackingConfidence: 0.45,
-        });
-        this.isModelReady = true;
+      } catch (localGpuErr) {
+        console.warn('Local GPU model load attempt failed, trying CDN fallback:', localGpuErr);
+        // 2. Try CDN fallback on GPU
+        try {
+          this.poseLandmarker = await PoseLandmarker.createFromOptions(vision, {
+            baseOptions: {
+              modelAssetPath: CDN_MODEL_PATH,
+              delegate: 'GPU',
+            },
+            runningMode: 'VIDEO',
+            numPoses: 1,
+            minPoseDetectionConfidence: 0.45,
+            minPosePresenceConfidence: 0.45,
+            minTrackingConfidence: 0.45,
+          });
+          this.isModelReady = true;
+        } catch (cdnGpuErr) {
+          console.warn('GPU unavailable, falling back to CPU delegate:', cdnGpuErr);
+          // 3. Fallback to CPU delegate
+          this.poseLandmarker = await PoseLandmarker.createFromOptions(vision, {
+            baseOptions: {
+              modelAssetPath: modelPath,
+              delegate: 'CPU',
+            },
+            runningMode: 'VIDEO',
+            numPoses: 1,
+            minPoseDetectionConfidence: 0.45,
+            minPosePresenceConfidence: 0.45,
+            minTrackingConfidence: 0.45,
+          });
+          this.isModelReady = true;
+        }
       }
     } catch (err) {
-      console.warn('MediaPipe model load error, will use optical fallback:', err);
+      console.warn('MediaPipe model initialization failed, will use optical fallback:', err);
       this.poseLandmarker = null;
       this.isModelReady = false;
     } finally {
@@ -99,7 +153,18 @@ export class AIPoseTracker {
    */
   public async track(video: HTMLVideoElement, isSelfie = true): Promise<TrackedPose> {
     if (!video || video.readyState < 2 || video.videoWidth === 0) {
-      return { x: 0, y: -0.1, z: 0, scale: 1.0, rotationY: 0, rotationZ: 0, confidence: 0, isDetected: false };
+      return {
+        x: 0,
+        y: -0.1,
+        z: 0,
+        scale: 1.0,
+        rotationY: 0,
+        rotationZ: 0,
+        leftArmAngle: 0,
+        rightArmAngle: 0,
+        confidence: 0,
+        isDetected: false,
+      };
     }
 
     // 1. If MediaPipe is initialized, run landmark detection
@@ -114,6 +179,8 @@ export class AIPoseTracker {
             const marks = result.landmarks[0];
             const leftShoulder = marks[11];
             const rightShoulder = marks[12];
+            const leftElbow = marks[13];
+            const rightElbow = marks[14];
 
             // Verify both shoulders are visible in frame
             const leftVis = leftShoulder?.visibility ?? 1;
@@ -147,6 +214,28 @@ export class AIPoseTracker {
               const yawAngle = Math.atan2(dz, Math.max(0.08, Math.abs(dx)));
               const rotationY = isSelfie ? yawAngle * 1.15 : -yawAngle * 1.15;
 
+              // Sleeve Arm Articulation: Calculate arm lift/elevation angles
+              let leftArmAngle = 0;
+              let rightArmAngle = 0;
+
+              // Left Arm (anatomical left)
+              if (leftElbow && (leftElbow.visibility ?? 1) > 0.25) {
+                const armDx = leftElbow.x - leftShoulder.x;
+                const armDy = leftElbow.y - leftShoulder.y;
+                // Resting angle in hoodie is ~0.45 rad outward. Calculate delta from resting pose:
+                const angle = Math.atan2(armDx, Math.max(0.01, armDy));
+                leftArmAngle = Math.max(-0.4, Math.min(1.35, (angle - 0.42) * 1.25));
+              }
+
+              // Right Arm (anatomical right)
+              if (rightElbow && (rightElbow.visibility ?? 1) > 0.25) {
+                const armDx = rightElbow.x - rightShoulder.x;
+                const armDy = rightElbow.y - rightShoulder.y;
+                // Resting angle in hoodie is ~ -0.45 rad outward
+                const angle = Math.atan2(-armDx, Math.max(0.01, armDy));
+                rightArmAngle = Math.max(-0.4, Math.min(1.35, (angle - 0.42) * 1.25));
+              }
+
               return {
                 x: worldX,
                 y: worldY,
@@ -154,6 +243,8 @@ export class AIPoseTracker {
                 scale: targetScale,
                 rotationY,
                 rotationZ,
+                leftArmAngle: isSelfie ? rightArmAngle : leftArmAngle,
+                rightArmAngle: isSelfie ? leftArmAngle : rightArmAngle,
                 confidence: 0.98,
                 isDetected: true,
               };
@@ -216,6 +307,8 @@ export class AIPoseTracker {
             scale: 1.05,
             rotationY: 0,
             rotationZ: 0,
+            leftArmAngle: 0,
+            rightArmAngle: 0,
             confidence: 0.72,
             isDetected: true,
           };
@@ -225,6 +318,17 @@ export class AIPoseTracker {
       }
     }
 
-    return { x: 0, y: -0.1, z: 0, scale: 1.0, rotationY: 0, rotationZ: 0, confidence: 0, isDetected: false };
+    return {
+      x: 0,
+      y: -0.1,
+      z: 0,
+      scale: 1.0,
+      rotationY: 0,
+      rotationZ: 0,
+      leftArmAngle: 0,
+      rightArmAngle: 0,
+      confidence: 0,
+      isDetected: false,
+    };
   }
 }
