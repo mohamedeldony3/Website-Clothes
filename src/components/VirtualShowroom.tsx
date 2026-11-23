@@ -655,10 +655,14 @@ export const VirtualShowroom: React.FC = () => {
       <ARViewModal
         isOpen={isAROpen}
         onClose={() => setIsAROpen(false)}
-        currentColor={color.threeColor}
+        currentColor={color.threeColor || color.hex}
         fit={fit}
         finish={finish}
         graphicUrl={currentBackGraphicUrl}
+        frontGraphicUrl={currentFrontGraphicUrl}
+        backGraphicUrl={currentBackGraphicUrl}
+        productName={language === 'ar' ? selectedProduct.nameAr : selectedProduct.name}
+        colorName={language === 'ar' ? color.nameAr : color.name}
       />
     </section>
   );
