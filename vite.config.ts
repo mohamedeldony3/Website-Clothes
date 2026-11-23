@@ -16,6 +16,9 @@ export default defineConfig({
           if (id.includes('node_modules/three') || id.includes('@react-three')) {
             return 'three-vendor';
           }
+          if (id.includes('node_modules/@mediapipe')) {
+            return 'mediapipe-vendor';
+          }
         }
       }
     }

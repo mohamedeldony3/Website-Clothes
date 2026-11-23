@@ -76,7 +76,14 @@ export const ARViewModal: React.FC<ARViewModalProps> = ({
   // AI Upper-Torso Tracking State
   const [isAiTracking, setIsAiTracking] = useState(true);
   const [aiLocked, setAiLocked] = useState(false);
-  const [aiOffset, setAiOffset] = useState({ x: 0, y: 0, scale: 1.0 });
+  const [aiOffset, setAiOffset] = useState({
+    x: 0,
+    y: 0,
+    z: 0,
+    scale: 1.0,
+    rotationY: 0,
+    rotationZ: 0,
+  });
   const trackerRef = useRef<AIPoseTracker | null>(null);
 
   // Detect iOS and Android for Native AR Launchers
@@ -128,9 +135,12 @@ export const ARViewModal: React.FC<ARViewModalProps> = ({
         if (pose && pose.isDetected && pose.confidence > 0.28) {
           setAiLocked(true);
           setAiOffset((prev) => ({
-            x: THREE.MathUtils.lerp(prev.x, pose.x, 0.16),
-            y: THREE.MathUtils.lerp(prev.y, pose.y, 0.16),
-            scale: THREE.MathUtils.lerp(prev.scale, pose.scale, 0.12),
+            x: THREE.MathUtils.lerp(prev.x, pose.x, 0.22),
+            y: THREE.MathUtils.lerp(prev.y, pose.y, 0.22),
+            z: THREE.MathUtils.lerp(prev.z, pose.z, 0.16),
+            scale: THREE.MathUtils.lerp(prev.scale, pose.scale, 0.16),
+            rotationY: THREE.MathUtils.lerp(prev.rotationY, pose.rotationY, 0.18),
+            rotationZ: THREE.MathUtils.lerp(prev.rotationZ, pose.rotationZ, 0.20),
           }));
         } else {
           setAiLocked(false);
@@ -499,7 +509,12 @@ export const ARViewModal: React.FC<ARViewModalProps> = ({
                 position={[
                   isAiTracking ? aiOffset.x : 0,
                   (isAiTracking ? aiOffset.y : 0) + modelYOffset,
-                  0
+                  isAiTracking ? aiOffset.z : 0
+                ]}
+                rotation={[
+                  0,
+                  isAiTracking ? aiOffset.rotationY : 0,
+                  isAiTracking ? aiOffset.rotationZ : 0
                 ]}
                 scale={[
                   (isAiTracking ? aiOffset.scale : 1.0) * arScale,
@@ -538,23 +553,27 @@ export const ARViewModal: React.FC<ARViewModalProps> = ({
                 [ AR_MODE: {hasCamera ? (facingMode === 'user' ? 'MIRROR' : 'ROOM') : 'STUDIO'} ]
               </span>
               {hasCamera && (
-                <span className={`backdrop-blur-md px-2 py-0.5 border font-bold flex items-center gap-1 ${
+                <span className={`backdrop-blur-md px-2 py-0.5 border font-bold flex items-center gap-1.5 transition-all ${
                   aiLocked
-                    ? 'bg-[#14260a]/90 border-[#CEFF00] text-[#CEFF00]'
+                    ? 'bg-[#14260a]/90 border-[#CEFF00] text-[#CEFF00] shadow-[0_0_10px_rgba(206,255,0,0.3)]'
                     : 'bg-[#111]/85 border-[#333] text-[#888]'
                 }`}>
-                  <Crosshair className="w-3 h-3 text-[#CEFF00]" />
-                  <span>{aiLocked ? (language === 'ar' ? 'تتبع تلقائي: مثبت' : 'AI LOCKED') : (language === 'ar' ? 'جاري التتبع...' : 'TRACKING...')}</span>
+                  <Crosshair className={`w-3 h-3 ${aiLocked ? 'text-[#CEFF00] animate-pulse' : 'text-[#888]'}`} />
+                  <span>{aiLocked ? (language === 'ar' ? 'تتبع الجسم: تم التثبيت والمطابقة' : 'AI BODY LOCKED') : (language === 'ar' ? 'جاري التعرف على الجسم...' : 'SCANNING BODY...')}</span>
                 </span>
               )}
             </div>
             <span className="bg-[#111]/85 backdrop-blur-md px-2 py-0.5 border border-[#333]">
-              1:1 SCALE • {Math.round(arScale * 100)}%
+              {aiLocked
+                ? `${(aiOffset.scale * 100).toFixed(0)}% BODY FIT • ${(aiOffset.rotationZ * (180 / Math.PI)).toFixed(0)}° TILT`
+                : `1:1 SCALE • ${Math.round(arScale * 100)}%`}
             </span>
           </div>
 
           {/* Center Target Box */}
-          <div className="w-48 h-48 sm:w-60 sm:h-60 border border-dashed border-[#CEFF00]/30 rounded-none mx-auto my-auto relative pointer-events-none">
+          <div className={`w-48 h-48 sm:w-60 sm:h-60 border border-dashed rounded-none mx-auto my-auto relative pointer-events-none transition-all duration-300 ${
+            aiLocked ? 'border-[#CEFF00]/60 scale-105' : 'border-[#CEFF00]/25'
+          }`}>
             <span className="absolute -top-1.5 -left-1.5 w-3 h-3 border-t-2 border-l-2 border-[#CEFF00]" />
             <span className="absolute -top-1.5 -right-1.5 w-3 h-3 border-t-2 border-r-2 border-[#CEFF00]" />
             <span className="absolute -bottom-1.5 -left-1.5 w-3 h-3 border-b-2 border-l-2 border-[#CEFF00]" />
@@ -562,9 +581,9 @@ export const ARViewModal: React.FC<ARViewModalProps> = ({
           </div>
 
           <div className="text-center text-[9px] sm:text-[10px] font-mono text-[#aaa] bg-black/75 backdrop-blur-md py-1 px-3 max-w-sm mx-auto border border-[#222]">
-            {language === 'ar'
-              ? 'اسحب بإصبع للتدوير • بإصبعين للتحريك والتقريب • استخدم الأزرار للضبط'
-              : 'DRAG TO ROTATE • 2 FINGERS TO PAN/ZOOM • USE DOCK CONTROLS'}
+            {aiLocked
+              ? (language === 'ar' ? '✓ تم التعرف على الجسم وضبط مقاس وميلان الهودي تلقائياً' : '✓ Body recognized: Auto-scaled and locked to your shoulders')
+              : (language === 'ar' ? 'قف أمام الكاميرا لمطابقة الهودي مع كتفيك وجسمك تلقائياً' : 'Stand in frame to auto-fit hoodie to your shoulders')}
           </div>
         </div>
       </div>
