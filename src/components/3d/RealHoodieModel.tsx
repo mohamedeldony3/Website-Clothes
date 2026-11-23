@@ -37,10 +37,10 @@ export const getCalibratedGarmentColor = (colorHex: string): THREE.Color => {
     '#162438': '#2b446a',
     '#1b2c46': '#32507d',
     // Onyx Black (True deep luxury obsidian cotton with visible geometry & fold highlights)
-    '#111111': '#181818',
-    '#0f0f0f': '#181818',
-    '#0c0c0c': '#181818',
-    '#141414': '#181818',
+    '#111111': '#242424',
+    '#0f0f0f': '#242424',
+    '#0c0c0c': '#242424',
+    '#141414': '#242424',
     // Chalk White / Raw Bone
     '#f7f7f7': '#f0eeea',
     '#ebe9e2': '#eae7e0',

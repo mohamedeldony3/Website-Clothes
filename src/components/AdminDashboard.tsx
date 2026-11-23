@@ -638,14 +638,16 @@ export const AdminDashboard: React.FC = () => {
                       <select
                         value={productCategoryFilter}
                         onChange={(e) => setProductCategoryFilter(e.target.value)}
-                        className="bg-[#090909] border border-[#2c2c2c] text-xs font-mono text-[#aaa] px-3 py-2 outline-none"
+                        className="bg-[#090909] border border-[#2c2c2c] text-xs font-mono text-[#aaa] px-3 py-2 outline-none focus:border-[#CEFF00] cursor-pointer"
                       >
-                        <option value="all">ALL CATEGORIES ({products.length})</option>
-                        {categories.map((c) => (
-                          <option key={c.key} value={c.key}>
-                            {c.labelEn} ({c.labelAr})
-                          </option>
-                        ))}
+                        <option value="all" className="bg-[#141414] text-white">ALL CATEGORIES ({products.length})</option>
+                        {categories
+                          .filter((c, idx, arr) => arr.findIndex((x) => x.key.toLowerCase() === c.key.toLowerCase()) === idx)
+                          .map((c) => (
+                            <option key={c.key} value={c.key} className="bg-[#141414] text-white">
+                              {c.labelEn} ({c.labelAr})
+                            </option>
+                          ))}
                       </select>
 
                       <button
@@ -1967,17 +1969,19 @@ const ProductEditorModal: React.FC<ProductEditorModalProps> = ({
                       />
                     </div>
                     <div>
-                      <label className="block text-[#888] mb-1 uppercase">Category (القسم)</label>
+                      <label className="block text-[#888] mb-1 uppercase font-mono text-xs">Category (القسم)</label>
                       <select
                         value={category}
                         onChange={(e) => setCategory(e.target.value as ProductCategory)}
-                        className="w-full bg-[#141414] border border-[#333] text-white p-3 outline-none focus:border-[#CEFF00]"
+                        className="w-full bg-[#141414] border border-[#333] text-white p-3 font-mono text-xs outline-none focus:border-[#CEFF00] cursor-pointer"
                       >
-                        {categories.map((c) => (
-                          <option key={c.key} value={c.key}>
-                            {c.labelEn} // {c.labelAr}
-                          </option>
-                        ))}
+                        {categories
+                          .filter((c, idx, arr) => arr.findIndex((x) => x.key.toLowerCase() === c.key.toLowerCase()) === idx)
+                          .map((c) => (
+                            <option key={c.key} value={c.key} className="bg-[#141414] text-white py-1">
+                              {c.labelEn} • {c.labelAr}
+                            </option>
+                          ))}
                       </select>
                     </div>
                   </div>
@@ -3118,14 +3122,16 @@ const CollectionEditorModal: React.FC<CollectionEditorModalProps> = ({
                   <select
                     value={key}
                     onChange={(e) => setKey(e.target.value)}
-                    className="w-full bg-[#141414] border border-[#333] text-white p-3 outline-none focus:border-[#CEFF00]"
+                    className="w-full bg-[#141414] border border-[#333] text-white p-3 font-mono text-xs outline-none focus:border-[#CEFF00] cursor-pointer"
                   >
-                    {categories.map((p) => (
-                      <option key={p.key} value={p.key}>
-                        {p.labelEn} ({p.labelAr}) - {p.key}
-                      </option>
-                    ))}
-                    <option value="custom">CUSTOM SLUG</option>
+                    {categories
+                      .filter((c, idx, arr) => arr.findIndex((x) => x.key.toLowerCase() === c.key.toLowerCase()) === idx)
+                      .map((p) => (
+                        <option key={p.key} value={p.key} className="bg-[#141414] text-white">
+                          {p.labelEn} ({p.labelAr}) - {p.key}
+                        </option>
+                      ))}
+                    <option value="custom" className="bg-[#141414] text-[#CEFF00]">CUSTOM SLUG</option>
                   </select>
                 </div>
                 <div>

@@ -44,8 +44,17 @@ const TurntableGroup: React.FC<{ children: React.ReactNode; speed?: number; auto
 }) => {
   const groupRef = useRef<THREE.Group>(null);
   useFrame((_, delta) => {
-    if (groupRef.current && autoRotate) {
+    if (!groupRef.current) return;
+    if (autoRotate) {
       groupRef.current.rotation.y += delta * speed;
+    } else {
+      // Smoothly return turntable base to 0 so Front and Back alignments stay square to camera
+      groupRef.current.rotation.y = THREE.MathUtils.damp(
+        groupRef.current.rotation.y,
+        0,
+        5.0,
+        delta
+      );
     }
   });
   return <group ref={groupRef}>{children}</group>;
@@ -133,49 +142,61 @@ export const HoodieShowroom: React.FC<HoodieShowroomProps> = ({
         <ResponsiveCamera />
         <color attach="background" args={['#090909']} />
 
-        {/* Balanced 360° Studio Lighting: 100% Constant True-to-Life Garment Color from every angle */}
-        <ambientLight intensity={1.6} color="#ffffff" />
+        {/* Studio Lighting with Edge Rim Lights to ensure black garments pop against dark backgrounds */}
+        <ambientLight intensity={1.75} color="#ffffff" />
         <hemisphereLight
           color="#ffffff"
-          groundColor="#ffffff"
-          intensity={0.6}
+          groundColor="#1a1a1a"
+          intensity={0.7}
         />
 
-        {/* 4 Symmetric Directional Lights: Front, Back, Left, Right for zero hue/brightness shifting on spin */}
+        {/* Symmetric Studio Lights: Front, Back, Left, Right */}
         <directionalLight
-          position={[0, 3.5, 3.0]}
+          position={[0, 3.5, 3.2]}
           intensity={1.3}
           color="#ffffff"
         />
 
         <directionalLight
-          position={[0, 2.0, 4.0]}
+          position={[0, 2.0, 4.2]}
           intensity={1.1}
           color="#ffffff"
         />
 
         <directionalLight
-          position={[0, 2.0, -4.0]}
-          intensity={1.1}
+          position={[0, 2.5, -4.0]}
+          intensity={1.2}
           color="#ffffff"
         />
 
         <directionalLight
-          position={[-4.0, 2.0, 0]}
+          position={[-4.0, 2.2, 0]}
           intensity={1.1}
           color={lightingMood === 'cyber' ? '#00f0ff' : '#ffffff'}
         />
 
         <directionalLight
-          position={[4.0, 2.0, 0]}
+          position={[4.0, 2.2, 0]}
           intensity={1.1}
+          color="#ffffff"
+        />
+
+        {/* Dual Rim Lights: Left-Back and Right-Back for subtle fabric silhouette highlights */}
+        <directionalLight
+          position={[-3.5, 2.8, -3.0]}
+          intensity={0.9}
+          color="#ffffff"
+        />
+        <directionalLight
+          position={[3.5, 2.8, -3.0]}
+          intensity={0.9}
           color="#ffffff"
         />
 
         {/* Top-Down Ambient Sculpt Light */}
         <directionalLight
           position={[0, 4.5, 0]}
-          intensity={0.6}
+          intensity={0.65}
           color="#ffffff"
         />
 

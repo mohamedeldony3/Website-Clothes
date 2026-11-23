@@ -165,7 +165,7 @@ export const Hero: React.FC = () => {
             frontGraphicUrl={activeProduct.frontGraphicUrl}
             backGraphicUrl={activeProduct.backGraphicUrl || activeProduct.graphicUrl}
             graphicUrl={activeProduct.graphicUrl}
-            autoRotate={true}
+            autoRotate={autoRotate}
             isBackView={isBackView}
             interactive={false}
           />
@@ -492,12 +492,12 @@ export const Hero: React.FC = () => {
         </div>
       </div>
 
-      {/* Floating Edge Navigation Chevrons (RTL-aware natural reading order) */}
+      {/* Floating Edge Navigation Chevrons (RTL-aware natural reading order, lowered on mobile to clear hoodie sleeves) */}
       <button
         onClick={() => step(language === 'ar' ? 1 : -1)}
         aria-label={language === 'ar' ? 'القطعة التالية' : 'Previous garment'}
         title={language === 'ar' ? 'القطعة التالية' : 'Previous garment'}
-        className="absolute left-1.5 sm:left-6 top-1/2 -translate-y-1/2 z-30 w-8 h-8 sm:w-12 sm:h-12 rounded-full bg-[#121212]/85 hover:bg-[#1f1f1f] border border-[#2e2e2e] hover:border-[#CEFF00] text-white hover:text-[#CEFF00] backdrop-blur-xl flex items-center justify-center transition-all shadow-[0_8px_30px_rgba(0,0,0,0.8)] active:scale-90 group pointer-events-auto"
+        className="absolute left-1.5 sm:left-6 top-[60%] sm:top-1/2 -translate-y-1/2 z-30 w-8 h-8 sm:w-12 sm:h-12 rounded-full bg-[#121212]/85 hover:bg-[#1f1f1f] border border-[#2e2e2e] hover:border-[#CEFF00] text-white hover:text-[#CEFF00] backdrop-blur-xl flex items-center justify-center transition-all shadow-[0_8px_30px_rgba(0,0,0,0.8)] active:scale-90 group pointer-events-auto"
       >
         <ChevronLeft className="w-4 h-4 sm:w-5 sm:h-5 group-hover:-translate-x-0.5 transition-transform" />
       </button>
@@ -506,7 +506,7 @@ export const Hero: React.FC = () => {
         onClick={() => step(language === 'ar' ? -1 : 1)}
         aria-label={language === 'ar' ? 'القطعة السابقة' : 'Next garment'}
         title={language === 'ar' ? 'القطعة السابقة' : 'Next garment'}
-        className="absolute right-1.5 sm:right-6 top-1/2 -translate-y-1/2 z-30 w-8 h-8 sm:w-12 sm:h-12 rounded-full bg-[#121212]/85 hover:bg-[#1f1f1f] border border-[#2e2e2e] hover:border-[#CEFF00] text-white hover:text-[#CEFF00] backdrop-blur-xl flex items-center justify-center transition-all shadow-[0_8px_30px_rgba(0,0,0,0.8)] active:scale-90 group pointer-events-auto"
+        className="absolute right-1.5 sm:right-6 top-[60%] sm:top-1/2 -translate-y-1/2 z-30 w-8 h-8 sm:w-12 sm:h-12 rounded-full bg-[#121212]/85 hover:bg-[#1f1f1f] border border-[#2e2e2e] hover:border-[#CEFF00] text-white hover:text-[#CEFF00] backdrop-blur-xl flex items-center justify-center transition-all shadow-[0_8px_30px_rgba(0,0,0,0.8)] active:scale-90 group pointer-events-auto"
       >
         <ChevronRight className="w-4 h-4 sm:w-5 sm:h-5 group-hover:translate-x-0.5 transition-transform" />
       </button>
@@ -621,24 +621,45 @@ export const Hero: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-1 sm:gap-2 shrink-0">
-          {/* Quick Flip View Button on Pill */}
+          {/* Quick Flip View Button on Pill (Pauses auto-rotate so front/back view stays pinned) */}
           <button
-            onClick={() => setIsBackView(!isBackView)}
-            title="Toggle Front / Back"
-            className="flex items-center gap-1 px-2 sm:px-3 py-1 sm:py-2 bg-[#1c1c1c] hover:bg-[#282828] border border-[#333] hover:border-[#CEFF00] text-[9px] sm:text-[10px] font-mono text-[#ccc] rounded-full transition-all"
+            type="button"
+            onClick={() => {
+              setIsBackView(!isBackView);
+              setAutoRotate(false);
+              setUserHold(12000);
+            }}
+            title={language === 'ar' ? (isBackView ? 'عرض الصدر (Front)' : 'عرض الظهر (180° Back)') : (isBackView ? 'View Front' : 'View Back (180°)')}
+            className={`flex items-center gap-1 px-2 sm:px-3 py-1 sm:py-2 border text-[9px] sm:text-[10px] font-mono rounded-full transition-all ${
+              isBackView
+                ? 'bg-[#CEFF00] text-black border-[#CEFF00] font-bold shadow-[0_0_8px_rgba(206,255,0,0.4)]'
+                : 'bg-[#1c1c1c] hover:bg-[#282828] border-[#333] hover:border-[#CEFF00] text-[#ccc]'
+            }`}
           >
-            <Compass className="w-3 h-3 text-[#CEFF00]" />
+            <Compass className="w-3 h-3 text-current" />
             <span>{isBackView ? 'FRONT' : '180°'}</span>
           </button>
 
-          {/* Continuous Turntable 360° Live Rotation Indicator */}
-          <div
-            title="360° Turntable Live Rotation"
-            className="flex items-center gap-1 px-1.5 sm:px-2.5 py-1 sm:py-1.5 text-[8px] sm:text-[10px] font-mono text-[#CEFF00] bg-[#141414] border border-[#2a2a2a] rounded-full"
+          {/* Interactive Turntable 360° Live Rotation Toggle Button */}
+          <button
+            type="button"
+            onClick={() => {
+              setAutoRotate(!autoRotate);
+              setUserHold(10000);
+            }}
+            title={autoRotate ? (language === 'ar' ? 'إيقاف الدوران 360°' : 'Pause 360° Turntable') : (language === 'ar' ? 'تشغيل الدوران 360°' : 'Start 360° Turntable')}
+            className={`flex items-center gap-1 px-2 sm:px-2.5 py-1 sm:py-1.5 text-[8px] sm:text-[10px] font-mono rounded-full border transition-all ${
+              autoRotate
+                ? 'text-[#CEFF00] bg-[#141414] border-[#2a2a2a] hover:border-[#CEFF00]'
+                : 'text-[#666] bg-[#111] border-[#222] hover:text-white hover:border-[#444]'
+            }`}
           >
-            <RotateCcw className="w-3 h-3 text-[#CEFF00] animate-spin" style={{ animationDuration: '6s' }} />
+            <RotateCcw
+              className={`w-3 h-3 ${autoRotate ? 'text-[#CEFF00] animate-spin' : 'text-[#666]'}`}
+              style={{ animationDuration: '6s' }}
+            />
             <span>360°</span>
-          </div>
+          </button>
 
           {/* Add to Cart button */}
           <button

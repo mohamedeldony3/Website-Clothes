@@ -6,6 +6,7 @@ import { RealHoodieModel } from './3d/RealHoodieModel';
 import { HoodieFit, HoodieFinish } from './3d/HoodieSculpt';
 import { useCart } from '../context/CartContext';
 import { getOptimizedDpr } from '../utils/performance';
+import { AIPoseTracker } from '../utils/aiPoseTracker';
 import {
   X,
   Camera,
@@ -24,7 +25,8 @@ import {
   User,
   SlidersHorizontal,
   Maximize2,
-  SwitchCamera
+  SwitchCamera,
+  Crosshair
 } from 'lucide-react';
 
 interface ARViewModalProps {
@@ -71,15 +73,26 @@ export const ARViewModal: React.FC<ARViewModalProps> = ({
   const [capturedPhoto, setCapturedPhoto] = useState<string | null>(null);
   const [isCapturing, setIsCapturing] = useState(false);
 
-  // Detect Mobile / Android for Native Scene Viewer ARCore
+  // AI Upper-Torso Tracking State
+  const [isAiTracking, setIsAiTracking] = useState(true);
+  const [aiLocked, setAiLocked] = useState(false);
+  const [aiOffset, setAiOffset] = useState({ x: 0, y: 0, scale: 1.0 });
+  const trackerRef = useRef<AIPoseTracker | null>(null);
+
+  // Detect iOS and Android for Native AR Launchers
   const isAndroid = useMemo(() => {
     if (typeof navigator === 'undefined') return false;
     return /android/i.test(navigator.userAgent);
   }, []);
 
+  const isIOS = useMemo(() => {
+    if (typeof navigator === 'undefined') return false;
+    return /iPhone|iPad|iPod/i.test(navigator.userAgent);
+  }, []);
+
   const sceneViewerUrl = useMemo(() => {
     if (typeof window === 'undefined') return '';
-    const glbUrl = `${window.location.origin}/pullover_hoodie.glb`;
+    const glbUrl = `${window.location.origin}/models/pullover_hoodie.glb`;
     const title = encodeURIComponent(productName || 'MONO STUDIO HOODIE');
     return `intent://arvr.google.com/scene-viewer/1.0?file=${encodeURIComponent(
       glbUrl
@@ -87,6 +100,57 @@ export const ARViewModal: React.FC<ARViewModalProps> = ({
       window.location.href
     )};end;`;
   }, [productName]);
+
+  // Real-time AI Pose Tracking Frame Loop
+  useEffect(() => {
+    if (!isOpen || !hasCamera || !isAiTracking) {
+      setAiLocked(false);
+      return;
+    }
+
+    if (!trackerRef.current) {
+      trackerRef.current = new AIPoseTracker();
+    }
+
+    let animationFrameId: number;
+    let isActive = true;
+
+    const runPoseTracking = async () => {
+      if (!isActive || !videoRef.current || videoRef.current.readyState < 2) {
+        if (isActive) {
+          animationFrameId = requestAnimationFrame(runPoseTracking);
+        }
+        return;
+      }
+
+      try {
+        const pose = await trackerRef.current!.track(videoRef.current, facingMode === 'user');
+        if (pose && pose.isDetected && pose.confidence > 0.28) {
+          setAiLocked(true);
+          setAiOffset((prev) => ({
+            x: THREE.MathUtils.lerp(prev.x, pose.x, 0.16),
+            y: THREE.MathUtils.lerp(prev.y, pose.y, 0.16),
+            scale: THREE.MathUtils.lerp(prev.scale, pose.scale, 0.12),
+          }));
+        } else {
+          setAiLocked(false);
+        }
+      } catch {
+        setAiLocked(false);
+      }
+
+      if (isActive) {
+        animationFrameId = requestAnimationFrame(runPoseTracking);
+      }
+    };
+
+    animationFrameId = requestAnimationFrame(runPoseTracking);
+
+    return () => {
+      isActive = false;
+      cancelAnimationFrame(animationFrameId);
+    };
+  }, [isOpen, hasCamera, isAiTracking, facingMode]);
 
   // Clean stop for video streams
   const stopCameraStream = () => {
@@ -293,7 +357,20 @@ export const ARViewModal: React.FC<ARViewModalProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
-          {/* Native Android Scene Viewer Button */}
+          {/* Native iOS Apple AR Quick Look Button (USDZ) */}
+          {isIOS && (
+            <a
+              href="/models/pullover_hoodie.usdz"
+              rel="ar"
+              title="Launch Apple AR Quick Look"
+              className="px-2.5 py-1 bg-[#CEFF00] text-black text-[10px] font-mono font-bold tracking-wider flex items-center gap-1.5 uppercase hover:bg-[#b8e600] transition-colors shadow-sm"
+            >
+              <Smartphone className="w-3.5 h-3.5" />
+              <span>{language === 'ar' ? 'Apple AR مباشر' : 'APPLE AR'}</span>
+            </a>
+          )}
+
+          {/* Native Android Scene Viewer Button (GLB) */}
           {isAndroid && (
             <a
               href={sceneViewerUrl}
@@ -419,8 +496,16 @@ export const ARViewModal: React.FC<ARViewModalProps> = ({
 
             <Suspense fallback={null}>
               <group
-                position={[0, modelYOffset, 0]}
-                scale={[arScale, arScale, arScale]}
+                position={[
+                  isAiTracking ? aiOffset.x : 0,
+                  (isAiTracking ? aiOffset.y : 0) + modelYOffset,
+                  0
+                ]}
+                scale={[
+                  (isAiTracking ? aiOffset.scale : 1.0) * arScale,
+                  (isAiTracking ? aiOffset.scale : 1.0) * arScale,
+                  (isAiTracking ? aiOffset.scale : 1.0) * arScale
+                ]}
               >
                 <RealHoodieModel
                   color={currentColor}
@@ -447,10 +532,22 @@ export const ARViewModal: React.FC<ARViewModalProps> = ({
 
         {/* HUD Overlay Crosshairs & Telemetry */}
         <div className="absolute inset-0 pointer-events-none z-20 flex flex-col justify-between p-3.5">
-          <div className="flex justify-between items-center text-[10px] font-mono text-[#CEFF00]">
-            <span className="bg-[#111]/85 backdrop-blur-md px-2 py-0.5 border border-[#333]">
-              [ AR_ANCHOR: {hasCamera ? 'CAMERA_LOCKED' : 'STUDIO_3D'} ]
-            </span>
+          <div className="flex flex-wrap justify-between items-center gap-1.5 text-[10px] font-mono text-[#CEFF00]">
+            <div className="flex items-center gap-1.5">
+              <span className="bg-[#111]/85 backdrop-blur-md px-2 py-0.5 border border-[#333]">
+                [ AR_MODE: {hasCamera ? (facingMode === 'user' ? 'MIRROR' : 'ROOM') : 'STUDIO'} ]
+              </span>
+              {hasCamera && (
+                <span className={`backdrop-blur-md px-2 py-0.5 border font-bold flex items-center gap-1 ${
+                  aiLocked
+                    ? 'bg-[#14260a]/90 border-[#CEFF00] text-[#CEFF00]'
+                    : 'bg-[#111]/85 border-[#333] text-[#888]'
+                }`}>
+                  <Crosshair className="w-3 h-3 text-[#CEFF00]" />
+                  <span>{aiLocked ? (language === 'ar' ? 'تتبع تلقائي: مثبت' : 'AI LOCKED') : (language === 'ar' ? 'جاري التتبع...' : 'TRACKING...')}</span>
+                </span>
+              )}
+            </div>
             <span className="bg-[#111]/85 backdrop-blur-md px-2 py-0.5 border border-[#333]">
               1:1 SCALE • {Math.round(arScale * 100)}%
             </span>
@@ -526,8 +623,28 @@ export const ARViewModal: React.FC<ARViewModalProps> = ({
           </button>
         </div>
 
-        {/* Feature Toggles (180° Flip & Silhouette Guide) */}
+        {/* Feature Toggles (AI Tracking, 180° Flip & Silhouette Guide) */}
         <div className="flex items-center gap-2">
+          {/* AI Torso Auto-Tracking Toggle */}
+          {hasCamera && (
+            <button
+              onClick={() => setIsAiTracking(!isAiTracking)}
+              className={`px-3 py-1.5 text-xs font-mono flex items-center gap-1.5 border transition-all ${
+                isAiTracking
+                  ? 'bg-[#18260e] text-[#CEFF00] border-[#CEFF00]'
+                  : 'bg-[#181818] text-[#777] border-[#333]'
+              }`}
+              title="Toggle AI Torso Fitting"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">
+                {isAiTracking
+                  ? (language === 'ar' ? 'تتبع الذكاء الاصطناعي: مفعّل' : 'AI AUTO-FIT: ON')
+                  : (language === 'ar' ? 'تتبع الذكاء الاصطناعي: معطّل' : 'AI AUTO-FIT: OFF')}
+              </span>
+            </button>
+          )}
+
           {/* 180° Front / Back Flip */}
           <button
             onClick={() => setIsBackView(!isBackView)}

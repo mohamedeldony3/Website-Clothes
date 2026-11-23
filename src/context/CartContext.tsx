@@ -105,13 +105,18 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   });
 
-  // Dynamic Categories Vault (persisted to localStorage)
+  // Dynamic Categories Vault (persisted to localStorage with strict deduplication)
   const [categories, setCategories] = useState<CategoryItem[]>(() => {
     try {
       const saved = localStorage.getItem('mono_categories_v2');
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          // Strictly deduplicate by category slug
+          return parsed.filter(
+            (c, idx, self) => idx === self.findIndex((x) => x.key?.toLowerCase() === c.key?.toLowerCase())
+          );
+        }
       }
     } catch {}
     return DEFAULT_CATEGORIES;
